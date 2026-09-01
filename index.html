@@ -283,27 +283,39 @@ function setStatus(msg){ statusLine.textContent = msg || ''; }
 async function startScanner(){
   usingZXing = !('BarcodeDetector' in window);
 
+  video.style.display = 'block';
+  placeholder.style.display = 'none';
+  reticle.classList.add('active');
+
   if(usingZXing){
-    setStatus('Lade Barcode-Bibliothek für Safari…');
+    setStatus('Lade Barcode-Bibliothek…');
     try{
       if(!window.ZXing){
-        await loadScript('https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js');
+        await loadScript('https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js');
       }
       if(!window.ZXing){
-        setStatus('Barcode-Bibliothek konnte nicht geladen werden. Bitte manuell eingeben oder Internetverbindung prüfen.');
-        return;
+        throw new Error('Bibliothek nicht verfügbar');
       }
     }catch(e){
       setStatus('Barcode-Bibliothek konnte nicht geladen werden. Bitte manuell eingeben oder Internetverbindung prüfen.');
+      video.style.display = 'none';
+      placeholder.style.display = 'block';
+      reticle.classList.remove('active');
       return;
     }
-  } else {
-    try{
-      detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e'] });
-    }catch(e){
-      setStatus('Barcode-Erkennung konnte nicht gestartet werden. Bitte manuell eingeben.');
-      return;
-    }
+
+    scanning = true;
+    scanBtn.textContent = 'Scanner stoppen';
+    setStatus('Halte den Barcode ruhig und gut beleuchtet ins Bild…');
+    startZXingLoop();
+    return;
+  }
+
+  try{
+    detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e'] });
+  }catch(e){
+    setStatus('Barcode-Erkennung konnte nicht gestartet werden. Bitte manuell eingeben.');
+    return;
   }
 
   try{
@@ -314,20 +326,12 @@ async function startScanner(){
   }
 
   video.srcObject = stream;
-  video.style.display = 'block';
-  placeholder.style.display = 'none';
-  reticle.classList.add('active');
   await video.play();
 
   scanning = true;
   scanBtn.textContent = 'Scanner stoppen';
   setStatus('Halte den Barcode ins Bild…');
-
-  if(usingZXing){
-    startZXingLoop();
-  } else {
-    scanLoop();
-  }
+  scanLoop();
 }
 
 function stopScanner(){
@@ -335,6 +339,7 @@ function stopScanner(){
   if(scanLoopHandle) cancelAnimationFrame(scanLoopHandle);
   if(zxingReader){ try{ zxingReader.reset(); }catch(e){} zxingReader = null; }
   if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if(video.srcObject){ try{ video.srcObject.getTracks().forEach(t => t.stop()); }catch(e){} video.srcObject = null; }
   video.style.display = 'none';
   placeholder.style.display = 'block';
   placeholder.textContent = 'Kamera gestoppt.';
@@ -368,20 +373,28 @@ function startZXingLoop(){
     ZXing.BarcodeFormat.UPC_E
   ];
   hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-  zxingReader = new ZXing.BrowserMultiFormatReader(hints, 250);
+  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+  zxingReader = new ZXing.BrowserMultiFormatReader(hints, 200);
 
-  zxingReader.decodeFromVideoElement(video, (result, err) => {
-    if(!scanning) return;
-    if(result){
-      const raw = result.getText();
-      if(raw){
-        stopScanner();
-        lookupProduct(raw);
+  // decodeFromConstraints lets ZXing request and manage the camera stream itself,
+  // which is the most reliable path on iOS Safari.
+  zxingReader.decodeFromConstraints(
+    { video: { facingMode: { ideal: 'environment' } }, audio: false },
+    video,
+    (result, err) => {
+      if(!scanning) return;
+      if(result){
+        const raw = result.getText();
+        if(raw){
+          stopScanner();
+          lookupProduct(raw);
+        }
       }
+      // NotFoundException on frames without a barcode is normal and ignored
     }
-    // NotFoundException on frames without a barcode is normal and ignored
-  }).catch((e) => {
-    setStatus('Barcode-Erkennung konnte nicht gestartet werden: ' + (e && e.message ? e.message : 'unbekannter Fehler'));
+  ).catch((e) => {
+    setStatus('Kamerazugriff für Barcode-Erkennung fehlgeschlagen: ' + (e && e.message ? e.message : 'unbekannter Fehler') + '. Bitte manuell eingeben.');
+    stopScanner();
   });
 }
 

@@ -251,7 +251,19 @@ let stream = null;
 let scanning = false;
 let detector = null;
 let scanLoopHandle = null;
+let zxingReader = null;
+let usingZXing = false;
 const history = [];
+
+function loadScript(src){
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
 
 const video = document.getElementById('video');
 const placeholder = document.getElementById('placeholder');
@@ -269,15 +281,25 @@ const historyList = document.getElementById('historyList');
 function setStatus(msg){ statusLine.textContent = msg || ''; }
 
 async function startScanner(){
-  if(!('BarcodeDetector' in window)){
-    setStatus('Dieses Gerät/Browser unterstützt keine native Barcode-Erkennung. Bitte die Nummer manuell eingeben.');
-    return;
-  }
-  try{
-    detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e'] });
-  }catch(e){
-    setStatus('Barcode-Erkennung konnte nicht gestartet werden. Bitte manuell eingeben.');
-    return;
+  usingZXing = !('BarcodeDetector' in window);
+
+  if(usingZXing){
+    setStatus('Lade Barcode-Bibliothek für Safari…');
+    try{
+      if(!window.ZXingBrowser){
+        await loadScript('https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js');
+      }
+    }catch(e){
+      setStatus('Barcode-Bibliothek konnte nicht geladen werden. Bitte manuell eingeben oder Internetverbindung prüfen.');
+      return;
+    }
+  } else {
+    try{
+      detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e'] });
+    }catch(e){
+      setStatus('Barcode-Erkennung konnte nicht gestartet werden. Bitte manuell eingeben.');
+      return;
+    }
   }
 
   try{
@@ -296,12 +318,18 @@ async function startScanner(){
   scanning = true;
   scanBtn.textContent = 'Scanner stoppen';
   setStatus('Halte den Barcode ins Bild…');
-  scanLoop();
+
+  if(usingZXing){
+    startZXingLoop();
+  } else {
+    scanLoop();
+  }
 }
 
 function stopScanner(){
   scanning = false;
   if(scanLoopHandle) cancelAnimationFrame(scanLoopHandle);
+  if(zxingReader){ try{ zxingReader.reset(); }catch(e){} zxingReader = null; }
   if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
   video.style.display = 'none';
   placeholder.style.display = 'block';
@@ -325,6 +353,31 @@ async function scanLoop(){
     }
   }catch(e){ /* ignore transient detection errors */ }
   scanLoopHandle = requestAnimationFrame(scanLoop);
+}
+
+function startZXingLoop(){
+  const hints = new Map();
+  const formats = [
+    ZXingBrowser.BarcodeFormat.EAN_13,
+    ZXingBrowser.BarcodeFormat.EAN_8,
+    ZXingBrowser.BarcodeFormat.UPC_A,
+    ZXingBrowser.BarcodeFormat.UPC_E
+  ];
+  hints.set(ZXingBrowser.DecodeHintType.POSSIBLE_FORMATS, formats);
+  zxingReader = new ZXingBrowser.BrowserMultiFormatReader(hints);
+
+  zxingReader.decodeFromVideoElement(video, (result, err) => {
+    if(!scanning) return;
+    if(result){
+      const raw = result.getText();
+      if(raw){
+        stopScanner();
+        lookupProduct(raw);
+      }
+    }
+  }).catch(() => {
+    setStatus('Barcode-Erkennung fehlgeschlagen. Bitte manuell eingeben.');
+  });
 }
 
 scanBtn.addEventListener('click', () => {

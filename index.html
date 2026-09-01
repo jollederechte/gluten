@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kornlos – Glutenscanner</title>
+<style>
+  :root{
+    --oat: #EFE8D8;
+    --oat-dark: #E2D8C0;
+    --ink: #1F2E22;
+    --forest: #24402E;
+    --forest-light: #3B6350;
+    --sage: #8FA88C;
+    --warn: #B33D1F;
+    --warn-bg: #F6E2D9;
+    --ok: #2F6B45;
+    --ok-bg: #E1EEE1;
+    --unknown: #7A6A3F;
+    --unknown-bg: #F1E9D2;
+    --paper: #FBF9F3;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--oat);
+    color:var(--ink);
+    font-family: 'Georgia', 'Iowan Old Style', serif;
+    min-height:100vh;
+  }
+  .app{
+    max-width:480px;
+    margin:0 auto;
+    min-height:100vh;
+    background:var(--paper);
+    display:flex;
+    flex-direction:column;
+    box-shadow:0 0 40px rgba(36,64,46,0.08);
+  }
+  header{
+    padding:28px 24px 20px;
+    background:var(--forest);
+    color:var(--oat);
+    position:relative;
+    overflow:hidden;
+  }
+  header .wheat{
+    position:absolute;
+    right:-10px;
+    top:-10px;
+    width:110px;
+    height:110px;
+    opacity:0.15;
+  }
+  h1{
+    margin:0;
+    font-size:28px;
+    font-weight:400;
+    letter-spacing:0.3px;
+  }
+  h1 span{ font-style:italic; color:var(--sage); }
+  header p{
+    margin:6px 0 0;
+    font-family: -apple-system, sans-serif;
+    font-size:13px;
+    color:var(--oat-dark);
+    max-width:280px;
+    line-height:1.5;
+  }
+
+  main{ flex:1; padding:20px; display:flex; flex-direction:column; gap:16px; }
+
+  .scan-zone{
+    border:1.5px solid var(--forest);
+    border-radius:6px;
+    background:var(--ink);
+    aspect-ratio:4/3;
+    position:relative;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  #video{ width:100%; height:100%; object-fit:cover; display:none; }
+  .scan-placeholder{
+    color:var(--oat-dark);
+    font-family:-apple-system, sans-serif;
+    font-size:13px;
+    text-align:center;
+    padding:20px;
+  }
+  .reticle{
+    position:absolute;
+    inset:20%;
+    border:2px solid var(--sage);
+    border-radius:4px;
+    pointer-events:none;
+    display:none;
+  }
+  .reticle.active{ display:block; }
+
+  button{
+    font-family:-apple-system, sans-serif;
+    font-weight:600;
+    font-size:15px;
+    border:none;
+    border-radius:5px;
+    padding:14px 18px;
+    cursor:pointer;
+    transition:transform 0.08s ease;
+  }
+  button:active{ transform:scale(0.98); }
+  .btn-primary{ background:var(--forest); color:var(--oat); }
+  .btn-primary:hover{ background:var(--forest-light); }
+  .btn-secondary{ background:transparent; color:var(--forest); border:1.5px solid var(--forest); }
+  .btn-primary:disabled{ background:var(--sage); cursor:not-allowed; }
+
+  .manual-entry{
+    display:flex;
+    gap:8px;
+    font-family:-apple-system, sans-serif;
+  }
+  .manual-entry input{
+    flex:1;
+    padding:12px 14px;
+    border:1.5px solid var(--oat-dark);
+    border-radius:5px;
+    font-size:15px;
+    background:var(--paper);
+    color:var(--ink);
+  }
+  .manual-entry input:focus{ outline:none; border-color:var(--forest); }
+
+  .status-line{
+    font-family:-apple-system, sans-serif;
+    font-size:13px;
+    color:var(--unknown);
+    text-align:center;
+    min-height:16px;
+  }
+
+  .result{
+    border-radius:8px;
+    padding:20px;
+    display:none;
+    flex-direction:column;
+    gap:10px;
+  }
+  .result.show{ display:flex; }
+  .result.gluten{ background:var(--warn-bg); border:1.5px solid var(--warn); }
+  .result.frei{ background:var(--ok-bg); border:1.5px solid var(--ok); }
+  .result.unklar{ background:var(--unknown-bg); border:1.5px solid var(--unknown); }
+
+  .result-verdict{
+    font-size:22px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .result.gluten .result-verdict{ color:var(--warn); }
+  .result.frei .result-verdict{ color:var(--ok); }
+  .result.unklar .result-verdict{ color:var(--unknown); }
+
+  .result-product{
+    font-family:-apple-system, sans-serif;
+    font-size:14px;
+    color:var(--ink);
+    font-weight:600;
+  }
+  .result-detail{
+    font-family:-apple-system, sans-serif;
+    font-size:13px;
+    line-height:1.6;
+    color:var(--ink);
+    opacity:0.85;
+  }
+  .result-detail b{ font-weight:600; }
+
+  .history{
+    margin-top:auto;
+    padding-top:10px;
+    border-top:1px solid var(--oat-dark);
+  }
+  .history h2{
+    font-family:-apple-system, sans-serif;
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:0.6px;
+    color:var(--unknown);
+    font-weight:600;
+    margin:0 0 8px;
+  }
+  .history-item{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:8px 0;
+    font-family:-apple-system, sans-serif;
+    font-size:13px;
+    border-bottom:1px solid var(--oat);
+  }
+  .history-item .dot{
+    width:8px; height:8px; border-radius:50%; margin-right:8px; flex-shrink:0;
+  }
+  .dot.gluten{ background:var(--warn); }
+  .dot.frei{ background:var(--ok); }
+  .dot.unklar{ background:var(--unknown); }
+  .history-item-name{ display:flex; align-items:center; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .empty-history{ font-family:-apple-system, sans-serif; font-size:13px; color:var(--unknown); opacity:0.7; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <svg class="wheat" viewBox="0 0 100 100"><path d="M50 90 L50 20 M50 30 L35 15 M50 30 L65 15 M50 45 L35 30 M50 45 L65 30 M50 60 L35 45 M50 60 L65 45" stroke="#EFE8D8" stroke-width="3" fill="none" stroke-linecap="round"/></svg>
+    <h1>Korn<span>los</span></h1>
+    <p>Scanne einen Barcode im Laden und sieh sofort, ob Gluten drinsteckt.</p>
+  </header>
+
+  <main>
+    <div class="scan-zone">
+      <video id="video" playsinline muted></video>
+      <div class="reticle" id="reticle"></div>
+      <div class="scan-placeholder" id="placeholder">Kamera noch nicht gestartet.<br>Tippe unten auf „Scanner starten".</div>
+    </div>
+
+    <button class="btn-primary" id="scanBtn">Scanner starten</button>
+
+    <div class="manual-entry">
+      <input type="text" inputmode="numeric" id="manualCode" placeholder="oder Barcode-Nummer eingeben…">
+      <button class="btn-secondary" id="manualBtn">Suchen</button>
+    </div>
+
+    <div class="status-line" id="status"></div>
+
+    <div class="result" id="result">
+      <div class="result-verdict" id="verdictText"></div>
+      <div class="result-product" id="productName"></div>
+      <div class="result-detail" id="productDetail"></div>
+    </div>
+
+    <div class="history">
+      <h2>Zuletzt gescannt</h2>
+      <div id="historyList"><div class="empty-history">Noch keine Scans in dieser Sitzung.</div></div>
+    </div>
+  </main>
+</div>
+
+<script>
+let stream = null;
+let scanning = false;
+let detector = null;
+let scanLoopHandle = null;
+const history = [];
+
+const video = document.getElementById('video');
+const placeholder = document.getElementById('placeholder');
+const reticle = document.getElementById('reticle');
+const scanBtn = document.getElementById('scanBtn');
+const statusLine = document.getElementById('status');
+const resultBox = document.getElementById('result');
+const verdictText = document.getElementById('verdictText');
+const productName = document.getElementById('productName');
+const productDetail = document.getElementById('productDetail');
+const manualCode = document.getElementById('manualCode');
+const manualBtn = document.getElementById('manualBtn');
+const historyList = document.getElementById('historyList');
+
+function setStatus(msg){ statusLine.textContent = msg || ''; }
+
+async function startScanner(){
+  if(!('BarcodeDetector' in window)){
+    setStatus('Dieses Gerät/Browser unterstützt keine native Barcode-Erkennung. Bitte die Nummer manuell eingeben.');
+    return;
+  }
+  try{
+    detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e'] });
+  }catch(e){
+    setStatus('Barcode-Erkennung konnte nicht gestartet werden. Bitte manuell eingeben.');
+    return;
+  }
+
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  }catch(e){
+    setStatus('Kamerazugriff nicht möglich. Bitte Berechtigung erlauben oder Nummer manuell eingeben.');
+    return;
+  }
+
+  video.srcObject = stream;
+  video.style.display = 'block';
+  placeholder.style.display = 'none';
+  reticle.classList.add('active');
+  await video.play();
+
+  scanning = true;
+  scanBtn.textContent = 'Scanner stoppen';
+  setStatus('Halte den Barcode ins Bild…');
+  scanLoop();
+}
+
+function stopScanner(){
+  scanning = false;
+  if(scanLoopHandle) cancelAnimationFrame(scanLoopHandle);
+  if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.style.display = 'none';
+  placeholder.style.display = 'block';
+  placeholder.textContent = 'Kamera gestoppt.';
+  reticle.classList.remove('active');
+  scanBtn.textContent = 'Scanner starten';
+  setStatus('');
+}
+
+async function scanLoop(){
+  if(!scanning) return;
+  try{
+    const codes = await detector.detect(video);
+    if(codes.length > 0){
+      const raw = codes[0].rawValue;
+      if(raw){
+        stopScanner();
+        lookupProduct(raw);
+        return;
+      }
+    }
+  }catch(e){ /* ignore transient detection errors */ }
+  scanLoopHandle = requestAnimationFrame(scanLoop);
+}
+
+scanBtn.addEventListener('click', () => {
+  if(scanning) stopScanner();
+  else startScanner();
+});
+
+manualBtn.addEventListener('click', () => {
+  const code = manualCode.value.trim();
+  if(code) lookupProduct(code);
+});
+manualCode.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ manualBtn.click(); }
+});
+
+const GLUTEN_KEYWORDS = ['gluten','weizen','wheat','roggen','rye','gerste','barley','dinkel','spelt','triticale','malz','malt','grieß','couscous','bulgur','panade','paniert'];
+const GLUTENFREE_KEYWORDS = ['glutenfrei','gluten-free','ohne gluten'];
+
+function analyzeProduct(product){
+  const allergens = (product.allergens_tags || []).join(' ').toLowerCase();
+  const traces = (product.traces_tags || []).join(' ').toLowerCase();
+  const ingredientsText = (product.ingredients_text_de || product.ingredients_text || '').toLowerCase();
+  const labels = (product.labels_tags || []).join(' ').toLowerCase();
+
+  if(labels.includes('gluten-free') || GLUTENFREE_KEYWORDS.some(k => ingredientsText.includes(k))){
+    return { verdict:'frei', reason:'Als glutenfrei gekennzeichnet.' };
+  }
+  if(allergens.includes('gluten')){
+    return { verdict:'gluten', reason:'Enthält laut Allergenkennzeichnung Gluten.' };
+  }
+  const foundInIngredients = GLUTEN_KEYWORDS.find(k => ingredientsText.includes(k));
+  if(foundInIngredients){
+    return { verdict:'gluten', reason:'Zutatenliste enthält „' + foundInIngredients + '".' };
+  }
+  if(traces.includes('gluten')){
+    return { verdict:'unklar', reason:'Keine Gluten-Zutat, aber „kann Spuren von Gluten enthalten".' };
+  }
+  if(!ingredientsText && allergens === '' ){
+    return { verdict:'unklar', reason:'Keine Zutatenliste in der Datenbank hinterlegt.' };
+  }
+  return { verdict:'unklar', reason:'Keine Gluten-Zutat gefunden, aber ohne Garantie – Datenbank evtl. unvollständig.' };
+}
+
+async function lookupProduct(code){
+  setStatus('Suche Produkt „' + code + '"…');
+  resultBox.classList.remove('show');
+  try{
+    const resp = await fetch('https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(code) + '.json');
+    const data = await resp.json();
+    if(data.status !== 1 || !data.product){
+      showResult('unklar', 'Produkt nicht gefunden', 'Barcode „' + code + '" ist nicht in der Open-Food-Facts-Datenbank. Bitte Verpackung selbst prüfen.');
+      setStatus('');
+      return;
+    }
+    const product = data.product;
+    const name = product.product_name_de || product.product_name || 'Unbenanntes Produkt';
+    const brand = product.brands ? ' · ' + product.brands : '';
+    const analysis = analyzeProduct(product);
+    showResult(analysis.verdict, name + brand, analysis.reason);
+    addToHistory(analysis.verdict, name);
+  }catch(e){
+    showResult('unklar', 'Fehler bei der Suche', 'Verbindung zur Datenbank fehlgeschlagen. Bitte erneut versuchen.');
+  }
+  setStatus('');
+}
+
+function showResult(verdict, name, detail){
+  resultBox.className = 'result show ' + verdict;
+  const labels = {
+    gluten: '⚠ Enthält Gluten',
+    frei: '✓ Glutenfrei',
+    unklar: '? Unklar'
+  };
+  verdictText.textContent = labels[verdict];
+  productName.textContent = name;
+  productDetail.textContent = detail;
+}
+
+function addToHistory(verdict, name){
+  history.unshift({ verdict, name });
+  if(history.length > 8) history.pop();
+  renderHistory();
+}
+
+function renderHistory(){
+  if(history.length === 0){
+    historyList.innerHTML = '<div class="empty-history">Noch keine Scans in dieser Sitzung.</div>';
+    return;
+  }
+  historyList.innerHTML = history.map(h =>
+    '<div class="history-item"><span class="history-item-name"><span class="dot ' + h.verdict + '"></span>' + escapeHtml(h.name) + '</span></div>'
+  ).join('');
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>

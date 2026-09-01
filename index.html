@@ -286,8 +286,12 @@ async function startScanner(){
   if(usingZXing){
     setStatus('Lade Barcode-Bibliothek für Safari…');
     try{
-      if(!window.ZXingBrowser){
+      if(!window.ZXing){
         await loadScript('https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js');
+      }
+      if(!window.ZXing){
+        setStatus('Barcode-Bibliothek konnte nicht geladen werden. Bitte manuell eingeben oder Internetverbindung prüfen.');
+        return;
       }
     }catch(e){
       setStatus('Barcode-Bibliothek konnte nicht geladen werden. Bitte manuell eingeben oder Internetverbindung prüfen.');
@@ -358,13 +362,13 @@ async function scanLoop(){
 function startZXingLoop(){
   const hints = new Map();
   const formats = [
-    ZXingBrowser.BarcodeFormat.EAN_13,
-    ZXingBrowser.BarcodeFormat.EAN_8,
-    ZXingBrowser.BarcodeFormat.UPC_A,
-    ZXingBrowser.BarcodeFormat.UPC_E
+    ZXing.BarcodeFormat.EAN_13,
+    ZXing.BarcodeFormat.EAN_8,
+    ZXing.BarcodeFormat.UPC_A,
+    ZXing.BarcodeFormat.UPC_E
   ];
-  hints.set(ZXingBrowser.DecodeHintType.POSSIBLE_FORMATS, formats);
-  zxingReader = new ZXingBrowser.BrowserMultiFormatReader(hints);
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+  zxingReader = new ZXing.BrowserMultiFormatReader(hints, 250);
 
   zxingReader.decodeFromVideoElement(video, (result, err) => {
     if(!scanning) return;
@@ -375,8 +379,9 @@ function startZXingLoop(){
         lookupProduct(raw);
       }
     }
-  }).catch(() => {
-    setStatus('Barcode-Erkennung fehlgeschlagen. Bitte manuell eingeben.');
+    // NotFoundException on frames without a barcode is normal and ignored
+  }).catch((e) => {
+    setStatus('Barcode-Erkennung konnte nicht gestartet werden: ' + (e && e.message ? e.message : 'unbekannter Fehler'));
   });
 }
 

@@ -374,12 +374,12 @@ function startZXingLoop(){
   ];
   hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
   hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-  zxingReader = new ZXing.BrowserMultiFormatReader(hints, 200);
+  zxingReader = new ZXing.BrowserMultiFormatReader(hints, 100);
 
   // decodeFromConstraints lets ZXing request and manage the camera stream itself,
   // which is the most reliable path on iOS Safari.
   zxingReader.decodeFromConstraints(
-    { video: { facingMode: { ideal: 'environment' } }, audio: false },
+    { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
     video,
     (result, err) => {
       if(!scanning) return;

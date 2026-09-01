@@ -226,6 +226,9 @@
 
     <button class="btn-primary" id="scanBtn">Scanner starten</button>
 
+    <button class="btn-secondary" id="ocrBtn" style="display:none;">Zahlen unter Barcode per Foto erkennen</button>
+    <canvas id="captureCanvas" style="display:none;"></canvas>
+
     <div class="manual-entry">
       <input type="text" inputmode="numeric" id="manualCode" placeholder="oder Barcode-Nummer eingeben…">
       <button class="btn-secondary" id="manualBtn">Suchen</button>
@@ -277,6 +280,8 @@ const productDetail = document.getElementById('productDetail');
 const manualCode = document.getElementById('manualCode');
 const manualBtn = document.getElementById('manualBtn');
 const historyList = document.getElementById('historyList');
+const ocrBtn = document.getElementById('ocrBtn');
+const captureCanvas = document.getElementById('captureCanvas');
 
 function setStatus(msg){ statusLine.textContent = msg || ''; }
 
@@ -286,6 +291,7 @@ async function startScanner(){
   video.style.display = 'block';
   placeholder.style.display = 'none';
   reticle.classList.add('active');
+  ocrBtn.style.display = 'block';
 
   if(usingZXing){
     setStatus('Lade Barcode-Bibliothek…');
@@ -344,6 +350,7 @@ function stopScanner(){
   placeholder.style.display = 'block';
   placeholder.textContent = 'Kamera gestoppt.';
   reticle.classList.remove('active');
+  ocrBtn.style.display = 'none';
   scanBtn.textContent = 'Scanner starten';
   setStatus('');
 }
@@ -409,6 +416,53 @@ manualBtn.addEventListener('click', () => {
 });
 manualCode.addEventListener('keydown', (e) => {
   if(e.key === 'Enter'){ manualBtn.click(); }
+});
+
+let tesseractLoaded = false;
+ocrBtn.addEventListener('click', async () => {
+  if(!video.videoWidth){
+    setStatus('Kamera liefert noch kein Bild. Kurz warten und erneut versuchen.');
+    return;
+  }
+  ocrBtn.disabled = true;
+  ocrBtn.textContent = 'Lese Zahlen…';
+  setStatus('Erkenne Ziffern unterm Barcode – bitte kurz stillhalten.');
+
+  try{
+    if(!tesseractLoaded){
+      if(!window.Tesseract){
+        await loadScript('https://unpkg.com/tesseract.js@5/dist/tesseract.min.js');
+      }
+      tesseractLoaded = true;
+    }
+
+    // Frame einfangen
+    captureCanvas.width = video.videoWidth;
+    captureCanvas.height = video.videoHeight;
+    const ctx = captureCanvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+
+    const { data } = await Tesseract.recognize(captureCanvas, 'eng', {
+      tessedit_char_whitelist: '0123456789'
+    });
+
+    const digitGroups = (data.text.match(/\d[\d\s]{6,}\d/g) || [])
+      .map(s => s.replace(/\s+/g, ''))
+      .filter(s => s.length === 8 || s.length === 12 || s.length === 13);
+
+    if(digitGroups.length > 0){
+      setStatus('Erkannt: ' + digitGroups[0]);
+      stopScanner();
+      lookupProduct(digitGroups[0]);
+    } else {
+      setStatus('Keine eindeutige Barcode-Nummer erkannt. Bitte näher heranhalten, mehr Licht oder Nummer manuell eintippen.');
+    }
+  }catch(e){
+    setStatus('Texterkennung fehlgeschlagen. Bitte Nummer manuell eintippen.');
+  } finally {
+    ocrBtn.disabled = false;
+    ocrBtn.textContent = 'Zahlen unter Barcode per Foto erkennen';
+  }
 });
 
 const GLUTEN_KEYWORDS = ['gluten','weizen','wheat','roggen','rye','gerste','barley','dinkel','spelt','triticale','malz','malt','grieß','couscous','bulgur','panade','paniert'];
